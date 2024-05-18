@@ -3,7 +3,8 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include "head_file\initwifi.h"
+//#include "head_file\initwifi.h"
+#include "head_file\server_connect.h"
 #include <time.h>
 #include <vector>
 #include <string>
@@ -13,11 +14,12 @@
 String tmp="0";
 std::map<String,std::map<int,int>> T;
 void timedata_store(time_t &now,int counter){ //时间信息处理
+    sendData(counter);
     char myStr[25] = { 0 };
     Serial.begin(9600);
 	struct tm *t = gmtime(&now);
     t->tm_hour+=8;
-    if(t->tm_year==1970) return;
+    if(t->tm_year<=2024) return;
     //t为当天时间
     char date1[20]={0};
     int time=t->tm_hour;
