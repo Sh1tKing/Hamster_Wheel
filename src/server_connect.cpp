@@ -101,6 +101,7 @@ void setupWifi()
     Serial.print(".");
     delay(500);
   }
+  configTime(8*3600, 0, "pool.ntp.org");
   Serial.println("OK");
   Serial.println("Wifi connected!");
 }
@@ -117,6 +118,7 @@ void checkNet() {
     clientReconnect();
     delay(100);
   }
+  client.loop();
 }
 
 void get_frequency(){
@@ -157,8 +159,10 @@ void sendData(int circle)
   {
     //先拼接出json字符串
     char params[82];
-    char jsonBuf[178];
-    sprintf(params, "{\"circle\":{\"value\":%d} }", circle); //我们把要上传的数据写在param里
+    char jsonBuf[178];//
+     configTime(8*3600, 0, "pool.ntp.org");
+    time_t times;
+    sprintf(params, "{\"circle\":{\"value\":%d}}", circle); //写在param里
     postMsgId ++;
     sprintf(jsonBuf, ONENET_POST_BODY_FORMAT, postMsgId, params);
     //再从mqtt客户端中发布post消息
@@ -199,6 +203,7 @@ void setup() {
   client.subscribe(ONENET_TOPIC_PROP_SET);
   client.subscribe(ONENET_TOPIC_PROP_GET);
   get_frequency();
+
   
 }
 int count = 0;
