@@ -13,14 +13,14 @@
 
 String tmp="0";
 std::map<String,std::map<int,int>> T;
-void timedata_store(time_t &now,int counter){ //时间信息处理
+void timedata_store(time_t &now,int counter,int daycircle){ //时间信息处理
     
     char myStr[25] = { 0 };
     Serial.begin(9600);
 	struct tm *t = gmtime(&now);
     t->tm_hour+=8;
-    sendData(counter);
-    if(t->tm_year<=2024) return;
+    sendData(daycircle);
+    //if(t->tm_year<=2024) return;
     
     //t为当天时间
     char date1[20]={0};
@@ -54,7 +54,7 @@ void timedata_store(time_t &now,int counter){ //时间信息处理
     Serial.println("---------------------------------------");
     
 }
-void gettimestamp(int counter){
+void gettimestamp(int counter,int daysum){
     time_t now;
     time(&now);  //获取时间戳 
     time_t tmptime=now;
@@ -68,7 +68,7 @@ void gettimestamp(int counter){
         str+=temp[temp.length()-i-1];
     }
     if(tmp!=str){
-        timedata_store(now,counter);
+        timedata_store(now,counter,daysum);
         tmp=str;
     } 
     

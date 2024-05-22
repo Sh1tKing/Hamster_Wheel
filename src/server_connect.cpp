@@ -26,6 +26,8 @@ int hallState = 0 ;
 int counter=0,daysum=0,latest=0;
 int flag=1;
 
+String serverName = "https://iot-api.heclouds.com/thingmodel/query-device-property?product_id=4aS7AhlV8X&device_name=circlecheck";
+const char *headerKeys[] = {"Authorization", "version=2022-05-01&res=userid%2F390250&et=2016217735&method=sha1&sign=pq%2Bbjtzv8VTEJcqS2v5uIME7uMk%3D"};
 WiFiClient espClient;           //创建一个WIFI连接客户端
 PubSubClient client(espClient); // 创建一个PubSub客户端, 传入创建的WIFI客户端
 float dis;
@@ -45,8 +47,64 @@ float dis;
 //这是post上传数据使用的模板
 #define ONENET_POST_BODY_FORMAT "{\"id\":\"%u\",\"version\":\"1.0\",\"params\":%s}"
 //#define ONENET_POST_BODY_FORMAT
-int postMsgId = 0; //记录已经post了多少条
+int postMsgId1 = 0,postMsgId2 = 0; //记录已经post了多少条
 
+void sendData(int daycircle);
+void sendLatestCir(int circle);
+void clientReconnect();
+int getdaycircle(){
+
+  HTTPClient http; // 声明HTTPClient对象
+
+  http.begin(serverName); // 准备启用连接
+
+  http.collectHeaders(headerKeys, 2); // 准备需要接收的响应头内容
+
+  http.addHeader("Authorization","version=2022-05-01&res=userid%2F390250&et=2016217735&method=sha1&sign=pq%2Bbjtzv8VTEJcqS2v5uIME7uMk%3D",false,true);
+  int httpCode = http.GET(); // 发起GET请求
+
+  int daycircle=0;
+  if (httpCode > 0) // 如果状态码大于0说明请求过程无异常
+  {
+    if (httpCode == HTTP_CODE_OK) // 请求被服务器正常响应，等同于httpCode == 200
+    {
+      char buff[512] = {0};
+
+      int len = http.getSize(); // 读取响应正文数据字节数，如果返回-1是因为响应头中没有Content-Length属性
+
+      WiFiClient *stream = http.getStreamPtr(); // 获取响应正文数据流指针
+
+      while (http.connected() && (len > 0 || len == -1)) // 当前已连接并且有数据可读
+      {
+        size_t size = stream->available(); // 获取数据流中可用字节数
+        if (size)
+        {
+          int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size)); // 读取数据到buff
+          
+          if (len > 0)
+          {
+            len -= c;
+          }
+        }
+        
+      }
+      for(int i=0;i<strlen(buff);i++){
+        if(buff[i]=='d'&&buff[i+1]=='a'&&buff[i+2]=='y'){
+            int len=41;
+            while(1){
+              
+              if(buff[i+len]=='"') break;
+              daycircle=daycircle*10+buff[i+len]-'0';
+              len++;
+            }
+            break;
+        }
+        
+      }
+    }
+  }
+  return daycircle;
+}
 void main_show(){
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE);  
@@ -55,17 +113,18 @@ void main_show(){
     tft.drawCentreString("当前: ",30,20,20); 
     tft.setTextSize(2);          
     tft.print(counter);  
-    tft.drawCentreString("圈",100,20,20);  
+    tft.drawCentreString("圈",110,20,20);  
 
     tft.drawCentreString("最近: ",30,50,20); 
     tft.setTextSize(2);          
     tft.print(latest);  
-    tft.drawCentreString("圈",100,50,20);   
+    tft.drawCentreString("圈",110,50,20);   
 
-    tft.drawCentreString("天圈数: ",40,80,20);  
+    tft.drawCentreString("今日",20,80,20);  
+    tft.drawCentreString("圈数: ",30,110,20);  
     tft.setTextSize(2);          
     tft.print(daysum);  
-    tft.drawCentreString("圈",110,80,20);   
+    tft.drawCentreString("圈",110,110,20);   
 
     tft.unloadFont();
     
@@ -123,14 +182,19 @@ void checkNet() {
 
 void get_frequency(){
     delay(1000);
-    tft.init();                // 初始屏幕
+    tft.init();       
     main_show();
     time_t now1,now2;
    
     while(1){
         checkNet();
-        hallState = digitalRead ( A3144Port ) ; 
         time(&now1);
+        struct tm *t = gmtime(&now1);
+        t=localtime(&now1);
+        if(t->tm_hour==0 && t->tm_min==0 && t->tm_sec==0) sendData(0);
+        hallState = digitalRead ( A3144Port ) ; 
+        time(&now1); 
+        
         if(hallState==LOW){
             time(&now2);
             flag=0;
@@ -139,42 +203,70 @@ void get_frequency(){
             {
                hallState = digitalRead ( A3144Port ) ;
             }
+            sendLatestCir(counter);
             main_show();
         } 
+        
         if(now1-now2==5 && flag==0) {
-            gettimestamp(counter);
             latest=counter;
             daysum+=counter;
+            sendLatestCir(0);
+            gettimestamp(counter,daysum);
             counter=0;
             flag=1;
             main_show();
         }
     }
 }
-
-
-void sendData(int circle)
+void sendLatestCir(int circle){
+  //发送当前圈数
+    {
+       char params[82];
+       char jsonBuf[178];//
+       configTime(8*3600, 0, "pool.ntp.org");
+       time_t times;
+       sprintf(params, "{\"circle\":{\"value\":%d}}", circle); //写在param里
+       postMsgId1 ++;
+       sprintf(jsonBuf, ONENET_POST_BODY_FORMAT, postMsgId1, params);
+       //再从mqtt客户端中发布post消息
+       if (client.publish(ONENET_TOPIC_PROP_POST, jsonBuf))
+       {
+         Serial.print("Post message to cloud: ");
+         Serial.println(jsonBuf);
+       }
+       else
+       {
+         Serial.println("Publish message to cloud failed!");
+       }
+    }
+   
+}
+void sendData(int daycircle)
 {
   if (client.connected())
   {
-    //先拼接出json字符串
-    char params[82];
-    char jsonBuf[178];//
-     configTime(8*3600, 0, "pool.ntp.org");
-    time_t times;
-    sprintf(params, "{\"circle\":{\"value\":%d}}", circle); //写在param里
-    postMsgId ++;
-    sprintf(jsonBuf, ONENET_POST_BODY_FORMAT, postMsgId, params);
-    //再从mqtt客户端中发布post消息
-    if (client.publish(ONENET_TOPIC_PROP_POST, jsonBuf))
+    
     {
-      Serial.print("Post message to cloud: ");
-      Serial.println(jsonBuf);
+      //发送每日圈数
+      char params[82];
+      char jsonBuf[178];//
+      configTime(8*3600, 0, "pool.ntp.org");
+      time_t times;
+      sprintf(params, "{\"daycircle\":{\"value\":%d}}", daycircle); //写在param里
+      postMsgId2 ++;
+      sprintf(jsonBuf, ONENET_POST_BODY_FORMAT, postMsgId2, params);
+      //再从mqtt客户端中发布post消息
+      if (client.publish(ONENET_TOPIC_PROP_POST, jsonBuf))
+      {
+        Serial.print("Post message to cloud: ");
+        Serial.println(jsonBuf);
+      }
+      else
+      {
+        Serial.println("Publish message to cloud failed!");
+      }
     }
-    else
-    {
-      Serial.println("Publish message to cloud failed!");
-    }
+    
   }
 
 }
@@ -202,6 +294,7 @@ void setup() {
   }
   client.subscribe(ONENET_TOPIC_PROP_SET);
   client.subscribe(ONENET_TOPIC_PROP_GET);
+  daysum=getdaycircle();
   get_frequency();
 
   

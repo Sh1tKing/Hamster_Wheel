@@ -6,5 +6,5 @@
 #include <Arduino.h>
 #include "config.h"
 
-void gettimestamp(int counter);
+void gettimestamp(int counter,int daycircle);
 #endif
