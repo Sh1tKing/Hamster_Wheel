@@ -3,22 +3,24 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-//#include "head_file\initwifi.h"
 #include "head_file\server_connect.h"
 #include <time.h>
 #include <vector>
 #include <string>
 #include <map>
+#include <Preferences.h>
 #include <iostream>
 
 String tmp="0";
-std::map<String,std::map<int,int>> T;
+std::map<String,std::map<int,int>> T; 
+
 void timedata_store(time_t &now,int counter,int daycircle){ //时间信息处理
     
     char myStr[25] = { 0 };
     Serial.begin(9600);
 	struct tm *t = gmtime(&now);
     t->tm_hour+=8;
+    saveLocalday(t->tm_yday);
     sendData(daycircle);
     //if(t->tm_year<=2024) return;
     
