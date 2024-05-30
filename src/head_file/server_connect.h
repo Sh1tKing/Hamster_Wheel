@@ -5,4 +5,5 @@ void sendLatestCir(int circle);
 void saveLocalday(int yday);
 void saveLocalrh(int rh);
 void clientReconnect();
+void sendServerHourLap(int PerLap,String time);
 #endif

@@ -7,7 +7,9 @@
 #include "head_file\data.h"
 #include <time.h>
 #include <ArduinoJson.h>
+#include <string>
 #include <Preferences.h>
+#include <vector>
 #include "head_file\fontzh20.h"
  
 //uFire_SHT20 sht20;
@@ -53,7 +55,21 @@ void sendData(int daycircle);
 void sendLatestCir(int circle);
 void clientReconnect();
 void sendPerRData(int PerR);
-
+void sendServerHourLap(int PerLap,String time);
+void savePasthour(int cter);
+void saveLocalrh(int rh);
+void setupWifi();
+char* int2string(int val){
+  char* str = (char*)malloc(sizeof(char)*10);
+  sprintf(str,"%d",val);
+  return str;
+}
+char* int2string2(int val){
+  char* str = (char*)malloc(sizeof(char)*10);
+  sprintf(str,"%d",val);
+  sprintf(str,"%c",'t');
+  return str;
+}
 int getdaycircle(){
 
   HTTPClient http; // 声明HTTPClient对象
@@ -202,27 +218,17 @@ void clientReconnect()
     }
   }
 }
+Preferences prefs;
+uint32_t daystamp = prefs.getUInt("daystamp", 0);
+uint32_t rh = prefs.getUInt("rh", 0);
+uint32_t daysum1 = prefs.getUInt("daysum1", 0);
 //连接WIFI相关函数
-void setupWifi()
-{
-  delay(10);
-  Serial.println("connect WIFI");
-  WiFi.begin(ssid, password);
-  while (!WiFi.isConnected())
-  {
-    Serial.print(".");
-    delay(500);
-  }
-  configTime(8*3600, 0, "asia.pool.ntp.org");
-  Serial.println("OK");
-  Serial.println("Wifi connected!");
-}
-
+int cflag=0;
 void checkNet() {
-  // put your main code here, to run repeatedly:
 
   if (!WiFi.isConnected()) //先看WIFI是否还在连接
   {
+    cflag=1;
     setupWifi();
   }
   if (!client.connected()) //如果客户端没连接ONENET, 重新连接
@@ -232,9 +238,107 @@ void checkNet() {
   }
   client.loop();
 }
-Preferences prefs;
-uint32_t daystamp = prefs.getUInt("daystamp", 0);
-uint32_t rh = prefs.getUInt("rh", 0);
+void setupWifi()
+{
+  delay(10);
+  WiFi.begin(ssid, password);
+  Serial.println("connecting WIFI");
+  int cter=0;
+  while (!WiFi.isConnected())
+  {
+    if(cflag==1)savePasthour(cter);
+    WiFi.begin(ssid, password);
+    // Serial.print(".");
+     delay(500);
+  }
+  
+  Serial.println("WIFI connected");
+  configTime(8*3600, 0, "asia.pool.ntp.org");
+  Serial.println("OK");
+  Serial.println("Wifi connected!"); 
+  
+  if(cflag==1){
+      clientReconnect();
+      delay(500);
+      prefs.begin("mynamespace"); 
+      daysum1=prefs.getUInt("daysum1",0);
+      Serial.println(prefs.getUInt("daysum1",0));
+      daysum=daysum1;
+      sendData(daysum);
+      for(int i=0;i<=cter;i++){
+        char* ptr=int2string(i);
+        char *ptr1=int2string2(cter);
+        int hlap=prefs.getUInt(ptr,0); 
+        String timesp=String(prefs.getULong64(ptr1));
+        sendServerHourLap(hlap,timesp);
+        sendPerRData(hlap);
+      }
+      prefs.end();
+  }
+  cflag=0;
+}
+
+void savePasthour(int cter){
+        time_t now1=time(NULL),now2=time(NULL);
+        time(&now1);
+        String timestamp=String(now1);
+        struct tm *t = gmtime(&now1); 
+        int nowyear=t->tm_year, nowmin=t->tm_min,nowhour=t->tm_hour,nowsec=t->tm_sec,nowday=t->tm_yday;
+        prefs.begin("mynamespace");
+        //Serial.println(nowyear);
+        // hallState = digitalRead ( A3144Port ) ; 
+        hallState = hallRead(); 
+        time(&now1); 
+        if(hallState<0){
+            time(&now2);
+            flag=0;
+            counter++;
+            phround++;
+            while (hallState<0)
+            {
+              //Serial.println(hallState);
+              //hallState = digitalRead ( A3144Port ) ;
+               hallState = hallRead(); 
+            }
+            Serial.println(counter);
+            main_show();
+        } 
+        //Serial.println(t);
+        if(nowmin==0 && nowsec==0){
+            //Serial.println("asdfasdfa");
+            int pr=random(10,100);
+            prefs.begin("mynamespace"); 
+            char *ptr=int2string(cter);
+            char *ptr1=int2string2(cter);
+            prefs.putUInt(ptr, phround); 
+            long timestamp=now1;
+            prefs.putULong64(ptr1,timestamp);
+            cter++;
+            //Serial.println(cter);
+            prefs.end();
+            sendPerRData(phround);
+            phround=0;
+            saveLocalrh(phround);
+            delay(1000);
+        }
+        if(flag==0) {
+            latest=counter;
+            daysum+=counter;
+            daysum1=daysum;
+            Serial.println(daysum);
+            Serial.println(daysum1);
+            //sendLatestCir(0);
+            //gettimestamp(counter,daysum);
+            prefs.begin("mynamespace");
+            prefs.putUInt("daysum1", daysum1);
+            prefs.end();
+            counter=0;
+            flag=1;
+            main_show();
+        }
+}
+
+
 void saveLocalday(int yday){
     // 声明Preferences对象
     Serial.begin(9600);
@@ -242,47 +346,78 @@ void saveLocalday(int yday){
     prefs.putUInt("daystamp", yday); // 将数据保存到当前命名空间的"count"键中
     prefs.end(); // 关闭当前命名空间
 }
+void sendServerHourLap(int PerLap,String time){
+    HTTPClient httpclient;
+    httpclient.begin("http://47.120.71.204:3000/ai/init");
+    httpclient.addHeader("Content-Type", "application/json");
+    String requestData = "{\"laps_in_the_last_hour\":{\"value\":" + String(PerLap) + "," + "\"time\":" + String(time) + "}" + "}";    
+      // ,"+
+      // "\"total_laps_day\":{"+
+      // "\"value\":"+String(daysum)+","+
+      // "\"time\":"+String(time)+"}"
+    Serial.println(requestData);
+    int httpcode=httpclient.POST(requestData);
+    if (httpcode > 0) {
+      String response = httpclient.getString();
+      Serial.println("response: " + response);
+    } else {
+      Serial.println("error");
+    }
+    
+    httpclient.end();
+}
 void saveLocalrh(int rh){
     // 声明Preferences对象
     Serial.begin(9600);
     prefs.begin("mynamespace"); // 打开命名空间mynamespace
-    prefs.putUInt("rh", rh); // 将数据保存到当前命名空间的"count"键中
+    prefs.putUInt("rh", rh); 
     prefs.end(); // 关闭当前命名空间
 }
-void get_frequency(){
+void boot(){
     delay(1000);
     tft.init();       
     main_show();
     time_t now1=time(NULL),now2=time(NULL);
     while(1){
         checkNet();
+        configTime(8*3600, 0, "asia.pool.ntp.org");
         time(&now1);
+        String timestamp=String(now1);
         struct tm *t = gmtime(&now1); 
         int nowyear=t->tm_year, nowmin=t->tm_min,nowhour=t->tm_hour,nowsec=t->tm_sec,nowday=t->tm_yday;
+
         while(nowyear==70){
-          Serial.print("loading time");
-          Serial.print(".");
+          WiFi.disconnect();
+          setupWifi();
           delay(1000);
         }
-        prefs.begin("mynamespace");
         //Serial.println(nowyear);
+        // Serial.println(prefs.getUInt("daystamp",0));
+        // Serial.println(nowday);
+        prefs.begin("mynamespace");
         if(prefs.getUInt("daystamp",0)!=nowday){
-             sendData(0);
+             sendData(0); 
              daysum=getdaycircle();
+             saveLocalday(nowday);
+             
              main_show();
         }
-        hallState = digitalRead ( A3144Port ) ; 
+        // hallState = digitalRead ( A3144Port ) ; 
+        hallState = hallRead(); 
         time(&now1); 
-        //Serial.println(nowmin);
-        if(hallState==LOW){
+        
+        if(hallState<0){
+            
             time(&now2);
             flag=0;
             counter++;
             phround++;
             saveLocalrh(phround);
-            while (hallState==LOW)
+            while (hallState<0)
             {
-               hallState = digitalRead ( A3144Port ) ;
+              //Serial.println(hallState);
+              //  hallState = digitalRead ( A3144Port ) ;
+               hallState = hallRead(); 
             }
             sendLatestCir(counter);
             main_show();
@@ -290,12 +425,14 @@ void get_frequency(){
 
         if(nowmin==0 && nowsec==0){
             //Serial.println("asdfasdfa");
+            int pr=random(10,100);
+            sendServerHourLap(phround,timestamp);
             sendPerRData(phround);
             phround=0;
             saveLocalrh(phround);
             delay(1000);
         }
-        if(now1-now2==3 && flag==0) {
+        if(now1-now2==5 && flag==0) {
             latest=counter;
             daysum+=counter;
             sendLatestCir(0);
@@ -356,7 +493,7 @@ void sendData(int daycircle)
     }
     
   }
-
+   
 }
 void sendPerRData(int PerR)
 {
@@ -386,14 +523,14 @@ void sendPerRData(int PerR)
   }
 
 }
-
 void setup() {
   Serial.begin(9600); //初始化串口
   //Wire.begin();
   //sht20.begin();
   delay(1000);
   setupWifi();        
-  delay(1000);                                   //调用函数连接WIFI
+  delay(1000);       
+  //pinMode(A3144Port, INPUT);                            //调用函数连接WIFI
   client.setServer(mqtt_server, port);                   //设置客户端连接的服务器,连接Onenet服务器, 使用1883端口
   
   Serial.println("setServer Init!"); 
@@ -412,13 +549,13 @@ void setup() {
   phround=prefs.getUInt("rh",0);
   //Serial.println(phround);
   daysum=getdaycircle();
-  get_frequency();
+  boot();
   
   
 }
 int count = 0;
 void loop(){
-
+  
 }
 
 
