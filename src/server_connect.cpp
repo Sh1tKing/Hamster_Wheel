@@ -11,10 +11,11 @@
 #include <Preferences.h>
 #include <vector>
 #include "head_file\fontzh20.h"
+#include "soc/rtc_wdt.h"
  
 //uFire_SHT20 sht20;
  
-const char* ssid = "99";
+const char* ssid = "999";
 const char* password = "HZK12346789h";
 const char* mqtt_server = "mqtts.heclouds.com"; //onenet 的 IP地址 mqtts.heclouds.com 183.230.40.96
 const int port = 1883;                    //端口号
@@ -23,11 +24,11 @@ const int port = 1883;                    //端口号
 #define mqtt_devid "circlecheck" //设备名称
 #define mqtt_password "version=2018-10-31&res=products%2F4aS7AhlV8X%2Fdevices%2Fcirclecheck&et=2058447118&method=md5&sign=jXrmJQJYfBznCCdUJH0SrA%3D%3D"  //key
 TFT_eSPI tft = TFT_eSPI();  // 创建对象控制屏幕
-#define A3144Port 13 // 霍尔引脚
+#define A3144Port 27 // 霍尔引脚
 int hallState = 0 ;
 int counter=0,daysum=0,latest=0,phround=0;
 int flag=1;
-
+int count = 0;
 String serverName = "https://iot-api.heclouds.com/thingmodel/query-device-property?product_id=4aS7AhlV8X&device_name=circlecheck";
 const char *headerKeys[] = {"Authorization", "version=2022-05-01&res=userid%2F390250&et=2016217735&method=sha1&sign=pq%2Bbjtzv8VTEJcqS2v5uIME7uMk%3D"};
 WiFiClient espClient;           //创建一个WIFI连接客户端
@@ -56,7 +57,7 @@ void sendLatestCir(int circle);
 void clientReconnect();
 void sendPerRData(int PerR);
 void sendServerHourLap(int PerLap,String time);
-void savePasthour(int cter);
+void savePasthour(int &cter);
 void saveLocalrh(int rh);
 void setupWifi();
 char* int2string(int val){
@@ -65,9 +66,9 @@ char* int2string(int val){
   return str;
 }
 char* int2string2(int val){
+  String s=String(val)+'t';
   char* str = (char*)malloc(sizeof(char)*10);
-  sprintf(str,"%d",val);
-  sprintf(str,"%c",'t');
+  sprintf(str,"%s",s);
   return str;
 }
 int getdaycircle(){
@@ -237,19 +238,26 @@ void checkNet() {
     delay(100);
   }
   client.loop();
-}
+} 
+int cter=0;
 void setupWifi()
 {
   delay(10);
   WiFi.begin(ssid, password);
   Serial.println("connecting WIFI");
-  int cter=0;
+  int delayc=0;
   while (!WiFi.isConnected())
   {
-    if(cflag==1)savePasthour(cter);
-    WiFi.begin(ssid, password);
+    if(cflag==1){
+      delayc++;
+      savePasthour(cter);
+      WiFi.begin(ssid, password);
+      if(delayc%1000==0) {
+        delay(500);
+        delayc=0;
+      }
+    }
     // Serial.print(".");
-     delay(500);
   }
   
   Serial.println("WIFI connected");
@@ -265,20 +273,23 @@ void setupWifi()
       Serial.println(prefs.getUInt("daysum1",0));
       daysum=daysum1;
       sendData(daysum);
-      for(int i=0;i<=cter;i++){
+      Serial.println(cter);
+      for(int i=0;i<cter;i++){
         char* ptr=int2string(i);
-        char *ptr1=int2string2(cter);
+        char *ptr1=int2string2(i);
         int hlap=prefs.getUInt(ptr,0); 
-        String timesp=String(prefs.getULong64(ptr1));
+        Serial.println(ptr1);
+        String timesp=String(prefs.getUInt(ptr1,0));
         sendServerHourLap(hlap,timesp);
         sendPerRData(hlap);
       }
       prefs.end();
+      cter=0;
   }
   cflag=0;
 }
 
-void savePasthour(int cter){
+void savePasthour(int &cter){
         time_t now1=time(NULL),now2=time(NULL);
         time(&now1);
         String timestamp=String(now1);
@@ -286,19 +297,17 @@ void savePasthour(int cter){
         int nowyear=t->tm_year, nowmin=t->tm_min,nowhour=t->tm_hour,nowsec=t->tm_sec,nowday=t->tm_yday;
         prefs.begin("mynamespace");
         //Serial.println(nowyear);
-        // hallState = digitalRead ( A3144Port ) ; 
-        hallState = hallRead(); 
+        hallState = digitalRead ( A3144Port ) ; 
         time(&now1); 
-        if(hallState<0){
+        if(hallState==LOW){
             time(&now2);
             flag=0;
             counter++;
             phround++;
-            while (hallState<0)
+            while (hallState==LOW)
             {
               //Serial.println(hallState);
-              //hallState = digitalRead ( A3144Port ) ;
-               hallState = hallRead(); 
+              hallState = digitalRead ( A3144Port ) ;
             }
             Serial.println(counter);
             main_show();
@@ -306,13 +315,14 @@ void savePasthour(int cter){
         //Serial.println(t);
         if(nowmin==0 && nowsec==0){
             //Serial.println("asdfasdfa");
-            int pr=random(10,100);
-            prefs.begin("mynamespace"); 
+            //int pr=random(10,100);
             char *ptr=int2string(cter);
             char *ptr1=int2string2(cter);
+            prefs.begin("mynamespace"); 
             prefs.putUInt(ptr, phround); 
             long timestamp=now1;
-            prefs.putULong64(ptr1,timestamp);
+            Serial.println(ptr1);
+            prefs.putUInt(ptr1,timestamp);
             cter++;
             //Serial.println(cter);
             prefs.end();
@@ -325,7 +335,7 @@ void savePasthour(int cter){
             latest=counter;
             daysum+=counter;
             daysum1=daysum;
-            Serial.println(daysum);
+            // Serial.println(daysum);
             Serial.println(daysum1);
             //sendLatestCir(0);
             //gettimestamp(counter,daysum);
@@ -378,6 +388,10 @@ void boot(){
     tft.init();       
     main_show();
     time_t now1=time(NULL),now2=time(NULL);
+     prefs.begin("mynamespace");
+    // Serial.println(prefs.getUInt("0",0));
+    // Serial.println(prefs.getUInt("1",0));
+    prefs.end();
     while(1){
         checkNet();
         configTime(8*3600, 0, "asia.pool.ntp.org");
@@ -397,27 +411,26 @@ void boot(){
         prefs.begin("mynamespace");
         if(prefs.getUInt("daystamp",0)!=nowday){
              sendData(0); 
-             daysum=getdaycircle();
+             daysum=0;
              saveLocalday(nowday);
              
              main_show();
         }
-        // hallState = digitalRead ( A3144Port ) ; 
-        hallState = hallRead(); 
+        hallState = digitalRead ( A3144Port ) ; 
         time(&now1); 
         
-        if(hallState<0){
+        if(hallState==LOW){
             
             time(&now2);
             flag=0;
             counter++;
             phround++;
             saveLocalrh(phround);
-            while (hallState<0)
+            while (hallState==LOW)
             {
               //Serial.println(hallState);
-              //  hallState = digitalRead ( A3144Port ) ;
-               hallState = hallRead(); 
+               hallState = digitalRead ( A3144Port ) ;
+              //hallState = hallRead(); 
             }
             sendLatestCir(counter);
             main_show();
@@ -525,16 +538,13 @@ void sendPerRData(int PerR)
 }
 void setup() {
   Serial.begin(9600); //初始化串口
-  //Wire.begin();
-  //sht20.begin();
-  delay(1000);
+  //disableCore0WDT();
+  //rtc_wdt_protect_off();
   setupWifi();        
   delay(1000);       
-  //pinMode(A3144Port, INPUT);                            //调用函数连接WIFI
   client.setServer(mqtt_server, port);                   //设置客户端连接的服务器,连接Onenet服务器, 使用1883端口
   
   Serial.println("setServer Init!"); 
-  //client.setCallback(callback);
   client.connect(mqtt_devid, mqtt_pubid, mqtt_password); //客户端连接到指定的产品的指定设备.同时输入鉴权信息
   delay(1000);
   Serial.println("connect Init...."); 
@@ -553,7 +563,7 @@ void setup() {
   
   
 }
-int count = 0;
+
 void loop(){
   
 }
