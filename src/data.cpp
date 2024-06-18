@@ -22,39 +22,6 @@ void timedata_store(time_t &now,int counter,int daycircle){ //时间信息处理
     t->tm_hour+=8;
     saveLocalday(t->tm_yday);
     sendData(daycircle);
-    //if(t->tm_year<=2024) return;
-    
-    //t为当天时间
-    char date1[20]={0};
-    int time=t->tm_hour;
-    std::string myFormat = "%Y-%m-%d";
-	strftime(date1, sizeof(date1), myFormat.c_str(), t);
-    String date;
-    for(int i=0;i<strlen(date1);i++){
-        date+=date1[i];
-    }
-    if(T.find(date)!=T.end()){
-        if(T[date].find(time)!=T[date].end()){
-            T[date][time]+=counter;
-        }else{
-            T[date][time]=counter;
-        }
-    }else{
-        T[date][time]=counter;
-    }
-    Serial.println("---------------------------------------");
-    for(auto it=T.begin();it!=T.end();it++){
-        for(auto it1=it->second.begin();it1!=it->second.end();it1++){
-            Serial.print(it->first);
-            Serial.print(" ");
-            Serial.printf("%d%c",it1->first,'h');
-            Serial.print(" ");
-            Serial.printf("%d",it1->second);
-            Serial.println("rad");
-        }
-    }
-    Serial.println("---------------------------------------");
-    
 }
 void gettimestamp(int counter,int daysum){
     time_t now;

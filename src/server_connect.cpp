@@ -175,31 +175,6 @@ HTTPClient http; // 声明HTTPClient对象
   }
   return day;
 }
-void main_show(){
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE);  
-    tft.loadFont(fontzh20);      
-
-    tft.drawCentreString("当前: ",30,20,20); 
-    tft.setTextSize(2);          
-    tft.print(counter);  
-    tft.drawCentreString("圈",110,20,20);  
-
-    tft.drawCentreString("最近: ",30,50,20); 
-    tft.setTextSize(2);          
-    tft.print(latest);  
-    tft.drawCentreString("圈",110,50,20);   
-
-    tft.drawCentreString("今日",20,80,20);  
-    tft.drawCentreString("圈数: ",30,110,20);  
-    tft.setTextSize(2);          
-    tft.print(daysum);  
-    tft.drawCentreString("圈",110,110,20);   
-
-    tft.unloadFont();
-    
-}
-
 //重连函数, 如果客户端断线,可以通过此函数重连
 void clientReconnect()
 {
@@ -310,7 +285,6 @@ void savePasthour(int &cter){
               hallState = digitalRead ( A3144Port ) ;
             }
             Serial.println(counter);
-            main_show();
         } 
         //Serial.println(t);
         if(nowmin==0 && nowsec==0){
@@ -344,7 +318,6 @@ void savePasthour(int &cter){
             prefs.end();
             counter=0;
             flag=1;
-            main_show();
         }
 }
 
@@ -385,8 +358,7 @@ void saveLocalrh(int rh){
 }
 void boot(){
     delay(1000);
-    tft.init();       
-    main_show();
+    tft.init();
     time_t now1=time(NULL),now2=time(NULL);
      prefs.begin("mynamespace");
     // Serial.println(prefs.getUInt("0",0));
@@ -413,8 +385,6 @@ void boot(){
              sendData(0); 
              daysum=0;
              saveLocalday(nowday);
-             
-             main_show();
         }
         hallState = digitalRead ( A3144Port ) ; 
         time(&now1); 
@@ -433,7 +403,6 @@ void boot(){
               //hallState = hallRead(); 
             }
             sendLatestCir(counter);
-            main_show();
         } 
 
         if(nowmin==0 && nowsec==0){
@@ -452,7 +421,6 @@ void boot(){
             gettimestamp(counter,daysum);
             counter=0;
             flag=1;
-            main_show();
         }
     }
 }
@@ -483,7 +451,6 @@ void sendData(int daycircle)
 {
   if (client.connected())
   {
-    
     {
       //发送每日圈数
       char params[82];
